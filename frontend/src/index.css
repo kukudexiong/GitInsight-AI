@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==================== Light Theme Only (AmpCon Style) ==================== */
+:root {
+  --color-bg: #ffffff;
+  --color-surface: #f7f8fa;
+  --color-surface-2: #f0f2f5;
+  --color-border: #e5e6eb;
+  --color-border-light: #f0f1f3;
+  --color-hover: #f2f3f5;
+  --color-active: #e8f3ff;
+  --color-active-border: #bedaff;
+  --color-skeleton: #e8e8e8;
+
+  --color-text-primary: #1d2129;
+  --color-text-secondary: #4e5969;
+  --color-text-muted: #86909c;
+  --color-text-faint: #c9cdd4;
+
+  --color-brand: #165dff;
+  --color-brand-light: #e8f3ff;
+  --color-success: #00b42a;
+  --color-warning: #ff7d00;
+  --color-danger: #f53f3f;
+  --color-purple: #722ed1;
+
+  --color-diff-add-bg: #e6ffed;
+  --color-diff-add-text: #22863a;
+  --color-diff-del-bg: #ffeef0;
+  --color-diff-del-text: #cb2431;
+}
+
+/* ==================== Base Styles ==================== */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-bg);
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+/* ==================== Scrollbar ==================== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c9cdd4;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #86909c;
+}
+
+/* ==================== Form Elements ==================== */
+select, input {
+  font-family: inherit;
+}
+
+select option {
+  background-color: #ffffff;
+  color: var(--color-text-primary);
+}
+
+/* ==================== Recharts Tooltip ==================== */
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background-color: #ffffff !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+}
+
+.recharts-tooltip-wrapper .recharts-tooltip-label {
+  color: var(--color-text-primary) !important;
+}
+
+.recharts-tooltip-wrapper .recharts-tooltip-item {
+  color: var(--color-text-secondary) !important;
+}
