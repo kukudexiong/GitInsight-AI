@@ -19,10 +19,11 @@ interface TreeNode {
 interface Props {
   selectedFile: string
   onSelectFile: (path: string) => void
+  onDirectoryChange?: (path: string) => void
   expandToPath?: string // 当搜索结果选择时，展开到这个路径
 }
 
-export default function FileTreeView({ selectedFile, onSelectFile, expandToPath }: Props) {
+export default function FileTreeView({ selectedFile, onSelectFile, onDirectoryChange, expandToPath }: Props) {
   const [rootNodes, setRootNodes] = useState<TreeNode[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -116,6 +117,7 @@ export default function FileTreeView({ selectedFile, onSelectFile, expandToPath 
     }
     node.expanded = true
     setRootNodes([...rootNodes])
+    onDirectoryChange?.(node.entry.path)
   }
 
   if (loading) {

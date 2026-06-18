@@ -35,6 +35,7 @@ interface CommitInfo {
 
 export default function FileInsightPage() {
   const [selectedFile, setSelectedFile] = useState<string>('')
+  const [currentDirectory, setCurrentDirectory] = useState<string>('')
   const [expandToPath, setExpandToPath] = useState<string>('')
   const [commits, setCommits] = useState<CommitInfo[]>([])
   const [contributions, setContributions] = useState<any[]>([])
@@ -158,6 +159,9 @@ export default function FileInsightPage() {
   function handleSearchSelect(path: string) {
     setSelectedFile(path)
     setExpandToPath(path) // Trigger tree expansion
+    // Derive directory from file path
+    const dir = path.includes('/') ? path.substring(0, path.lastIndexOf('/')) : ''
+    setCurrentDirectory(dir)
   }
 
   return (
@@ -176,7 +180,12 @@ export default function FileInsightPage() {
         <div className="flex-1 overflow-y-auto">
           <FileTreeView
             selectedFile={selectedFile}
-            onSelectFile={setSelectedFile}
+            onSelectFile={(path) => {
+              setSelectedFile(path)
+              const dir = path.includes('/') ? path.substring(0, path.lastIndexOf('/')) : ''
+              setCurrentDirectory(dir)
+            }}
+            onDirectoryChange={(dir) => setCurrentDirectory(dir)}
             expandToPath={expandToPath}
           />
         </div>
@@ -192,7 +201,7 @@ export default function FileInsightPage() {
             }`}
           >
             <Network className="h-4 w-4 flex-shrink-0" />
-            <span>知识分布图</span>
+            <span>知识分布图{currentDirectory ? ` · ${currentDirectory.split('/').pop()}` : ''}</span>
           </button>
         </div>
       </aside>
@@ -215,7 +224,7 @@ export default function FileInsightPage() {
                 查看仓库中各成员的代码归属情况
               </p>
             </div>
-            <KnowledgeDistribution />
+            <KnowledgeDistribution directory={currentDirectory} />
           </div>
         ) : !selectedFile ? (
           <div className="p-5 overflow-y-auto h-full">
