@@ -8,13 +8,11 @@ import asyncio
 import json
 import logging
 import os
-import threading
 import time
-from pathlib import Path
-from typing import Set
+from collections import defaultdict
 
-from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
 LOG = logging.getLogger(__name__)
 
@@ -56,14 +54,16 @@ class GitWatcher:
     """Manages file system watching and WebSocket client notifications."""
 
     def __init__(self):
-        self._clients: Set[asyncio.Queue] = set()
-        self._observer: Observer | None = None
+        self._clients: defaultdict[str, set[asyncio.Queue]] = defaultdict(set)
+        self._observers: dict[str, Observer] = {}
         self._repo_path: str = ""
         self._loop: asyncio.AbstractEventLoop | None = None
 
     def start_watching(self, repo_path: str, loop: asyncio.AbstractEventLoop):
         """Start watching a repository's .git directory."""
-        self.stop_watching()
+        if repo_path in self._observers:
+            self._loop = loop
+            return
 
         git_dir = os.path.join(repo_path, '.git')
         if not os.path.isdir(git_dir):
@@ -73,56 +73,85 @@ class GitWatcher:
         self._repo_path = repo_path
         self._loop = loop
 
-        handler = GitChangeHandler(self._on_git_change)
-        self._observer = Observer()
-        self._observer.schedule(handler, git_dir, recursive=True)
-        self._observer.daemon = True
-        self._observer.start()
+        handler = GitChangeHandler(lambda: self._on_git_change(repo_path))
+        observer = Observer()
+        observer.schedule(handler, git_dir, recursive=True)
+        observer.daemon = True
+        observer.start()
+        self._observers[repo_path] = observer
         LOG.info(f"Started watching git changes at {git_dir}")
 
-    def stop_watching(self):
-        """Stop the file system observer."""
-        if self._observer:
-            self._observer.stop()
-            self._observer = None
-            LOG.info("Stopped watching git changes")
+    def stop_watching(self, repo_path: str | None = None):
+        """Stop the file system observer and notify clients to disconnect."""
+        repo_paths = [repo_path] if repo_path else list(self._observers.keys())
+        for path in repo_paths:
+            observer = self._observers.pop(path, None)
+            if observer:
+                observer.stop()
+                observer.join(timeout=2)
+                LOG.info(f"Stopped watching git changes at {path}")
+            for queue in self._clients.pop(path, set()):
+                try:
+                    queue.put_nowait(None)  # Sentinel to unblock waiting coroutines
+                except Exception:
+                    pass
 
-    def _on_git_change(self):
+        # If stopping all (no specific repo_path), also clear any remaining clients
+        # (e.g. clients connected with empty repo_path)
+        if repo_path is None:
+            for key in list(self._clients.keys()):
+                for queue in self._clients.pop(key, set()):
+                    try:
+                        queue.put_nowait(None)
+                    except Exception:
+                        pass
+
+    def _on_git_change(self, repo_path: str):
         """Called from watchdog thread when git state changes."""
         if self._loop:
             self._loop.call_soon_threadsafe(
-                lambda: asyncio.ensure_future(self._notify_clients())
+                lambda: asyncio.ensure_future(self._notify_clients(repo_path))
             )
 
-    async def _notify_clients(self):
+    async def _notify_clients(self, repo_path: str):
         """Notify all connected WebSocket clients."""
-        if not self._clients:
+        clients = self._clients.get(repo_path, set())
+        if not clients:
             return
 
         message = json.dumps({
             "type": "git_changed",
             "timestamp": int(time.time()),
-            "repo_path": self._repo_path,
+            "repo_path": repo_path,
         })
 
         dead_clients = set()
-        for queue in self._clients:
+        for queue in clients:
             try:
                 await queue.put(message)
             except Exception:
                 dead_clients.add(queue)
 
-        self._clients -= dead_clients
+        self._clients[repo_path] -= dead_clients
 
-    def subscribe(self) -> asyncio.Queue:
+    def subscribe(self, repo_path: str = "") -> asyncio.Queue:
         """Subscribe a new client. Returns a queue that receives notifications."""
         queue: asyncio.Queue = asyncio.Queue()
-        self._clients.add(queue)
+        self._clients[repo_path].add(queue)
         return queue
 
-    def unsubscribe(self, queue: asyncio.Queue):
+    def unsubscribe(self, queue: asyncio.Queue, repo_path: str = ""):
         """Unsubscribe a client."""
-        self._clients.discard(queue)
+        if repo_path:
+            self._clients[repo_path].discard(queue)
+            return
+        for clients in self._clients.values():
+            clients.discard(queue)
+
+    @property
+    def repo_path(self) -> str:
+        """The repository currently being watched."""
+        return self._repo_path
 
 
 # Singleton instance

@@ -3,9 +3,9 @@ Shared dependencies for API routes.
 """
 from functools import lru_cache
 
+from services.ai_service import AIService
 from services.git_service import GitService
 from services.stats_service import StatsService
-from services.ai_service import AIService
 
 
 @lru_cache(maxsize=4)
@@ -14,6 +14,7 @@ def get_git_service(repo_path: str) -> GitService:
     return GitService(repo_path)
 
 
+@lru_cache(maxsize=4)
 def get_stats_service(repo_path: str) -> StatsService:
     """Get a StatsService instance."""
     git_svc = get_git_service(repo_path)
