@@ -18,6 +18,7 @@ frontend/dist/
 # Environment
 .env
 backend/.env
+backend/.gitinsight-ai-config.json
 
 # IDE
 .idea/
@@ -28,3 +29,8 @@ backend/.env
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
+backend/*.log
+frontend/*.log

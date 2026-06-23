@@ -1,0 +1,33 @@
+# Ruff - Python linter & formatter
+# https://docs.astral.sh/ruff/
+
+target-version = "py311"
+line-length = 120
+
+[lint]
+select = [
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # pyflakes
+  "I",    # isort
+  "UP",   # pyupgrade
+  "B",    # flake8-bugbear
+  "SIM",  # flake8-simplify
+  "RUF",  # ruff-specific rules
+]
+ignore = [
+  "E501",   # line too long (handled by formatter)
+  "B008",   # do not perform function calls in argument defaults (FastAPI uses this pattern)
+  "RUF001", # ambiguous unicode characters (Chinese text is intentional)
+  "RUF012", # mutable class variable (we use this for AppState)
+  "RUF013", # implicit optional (we use Optional explicitly where needed)
+  "SIM105", # suppressible-exception (contextlib.suppress not always clearer)
+  "SIM108", # ternary instead of if-else (readability preference)
+]
+
+[lint.isort]
+known-first-party = ["api", "services"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
