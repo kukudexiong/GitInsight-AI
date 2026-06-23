@@ -36,7 +36,7 @@ async def set_repo(config: RepoConfig):
         git_watcher.start_watching(config.repo_path, loop)
         return {"status": "ok", "repo_path": config.repo_path}
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get("/repo")

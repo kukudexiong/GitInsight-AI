@@ -8,9 +8,9 @@ Provides team-level and file-level statistics:
 - Knowledge distribution
 - Collaboration patterns
 """
-from collections import defaultdict, Counter
+import os
+from collections import Counter, defaultdict
 from dataclasses import dataclass
-from typing import Optional
 
 from services.git_service import GitService
 
@@ -49,12 +49,18 @@ class StatsService:
 
     def __init__(self, git_service: GitService):
         self.git = git_service
+        self._cache: dict[tuple, object] = {}
+        self._cache_max_size = 200
 
     def get_author_contributions(self, file_path: str) -> list[AuthorContribution]:
         """
         Get author contribution breakdown for a file.
         Based on current blame data (who owns which lines now).
         """
+        cache_key = self._cache_key("author_contributions", file_path)
+        if cache_key in self._cache:
+            return self._cache[cache_key]  # type: ignore[return-value]
+
         blame_entries = self.git.get_file_blame(file_path)
         if not blame_entries:
             return []
@@ -78,7 +84,7 @@ class StatsService:
             author_lines[key]["commits"].add(entry.commit_sha)
 
         contributions = []
-        for key, data in author_lines.items():
+        for _key, data in author_lines.items():
             contributions.append(AuthorContribution(
                 author_name=data["author_name"],
                 author_email=data["author_email"],
@@ -88,6 +94,7 @@ class StatsService:
             ))
 
         contributions.sort(key=lambda c: c.lines_owned, reverse=True)
+        self._cache[cache_key] = contributions
         return contributions
 
     def get_modification_hotspots(
@@ -97,6 +104,10 @@ class StatsService:
         Identify frequently modified regions in a file.
         Analyzes recent commits to find which line ranges change most often.
         """
+        cache_key = self._cache_key("hotspots", file_path, max_commits)
+        if cache_key in self._cache:
+            return self._cache[cache_key]  # type: ignore[return-value]
+
         commits = self.git.get_file_history(file_path, max_count=max_commits)
         if len(commits) < 2:
             return []
@@ -126,6 +137,7 @@ class StatsService:
                     last_modified_date=commits[0].date,
                 ))
 
+        self._cache[cache_key] = hotspots
         return hotspots
 
     def get_bus_factor(self, file_path: str) -> BusFactorResult:
@@ -134,12 +146,18 @@ class StatsService:
         Bus factor = number of people who must be "hit by a bus" before
         the project/file loses all knowledgeable contributors.
         """
+        cache_key = self._cache_key("bus_factor", file_path)
+        if cache_key in self._cache:
+            return self._cache[cache_key]  # type: ignore[return-value]
+
         contributions = self.get_author_contributions(file_path)
         if not contributions:
-            return BusFactorResult(
+            result = BusFactorResult(
                 path=file_path, bus_factor=0,
                 top_contributors=[], risk_level="high"
             )
+            self._cache[cache_key] = result
+            return result
 
         # Count how many people own >5% of the file
         significant_contributors = [c for c in contributions if c.percentage > 5]
@@ -162,18 +180,24 @@ class StatsService:
             for c in contributions[:5]
         ]
 
-        return BusFactorResult(
+        result = BusFactorResult(
             path=file_path,
             bus_factor=bus_factor,
             top_contributors=top_contributors,
             risk_level=risk_level,
         )
+        self._cache[cache_key] = result
+        return result
 
     def get_knowledge_distribution(self, directory: str = "") -> list[dict]:
         """
         Get knowledge distribution across a directory.
         Shows which authors own which parts of the codebase.
         """
+        cache_key = self._cache_key("knowledge_distribution", directory)
+        if cache_key in self._cache:
+            return self._cache[cache_key]  # type: ignore[return-value]
+
         tree = self.git.get_file_tree(directory)
         author_ownership: dict[str, dict] = defaultdict(lambda: {"files": 0, "lines": 0})
 
@@ -197,6 +221,7 @@ class StatsService:
                 "lines_owned": data["lines"],
             })
 
+        self._cache[cache_key] = result
         return result
 
     def get_collaboration_patterns(self, file_path: str, max_commits: int = 50) -> list[dict]:
@@ -204,6 +229,10 @@ class StatsService:
         Analyze collaboration patterns on a file.
         Identifies pairs of developers who frequently modify the same file.
         """
+        cache_key = self._cache_key("collaboration", file_path, max_commits)
+        if cache_key in self._cache:
+            return self._cache[cache_key]  # type: ignore[return-value]
+
         commits = self.git.get_file_history(file_path, max_count=max_commits)
         if len(commits) < 2:
             return []
@@ -226,7 +255,19 @@ class StatsService:
                 "suggestion": f"{author_a} 和 {author_b} 经常交替修改此文件，建议加强沟通减少冲突",
             })
 
+        self._cache[cache_key] = patterns
         return patterns
+
+    def _cache_key(self, name: str, *parts) -> tuple:
+        """Build a cache key bound to the current HEAD commit."""
+        try:
+            head_sha = self.git.repo.head.commit.hexsha
+        except Exception:
+            head_sha = ""
+        # Evict cache if it grows too large
+        if len(self._cache) > self._cache_max_size:
+            self._cache.clear()
+        return (head_sha, name, *parts)
 
     def _parse_diff_line_numbers(self, diff_text: str) -> list[int]:
         """Parse a unified diff to extract changed line numbers in the new file."""
@@ -265,6 +306,3 @@ class StatsService:
         }
         _, ext = os.path.splitext(filename) if '.' in filename else ('', '')
         return ext.lower() in code_extensions
-
-
-import os

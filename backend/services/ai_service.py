@@ -9,13 +9,12 @@ Leverages OpenAI GPT-4o to provide intelligent insights:
 - Impact analysis
 - Code review suggestions
 """
-import os
 import json
-from typing import Optional
 
 from openai import AsyncOpenAI
 
-from services.git_service import GitService, CommitInfo, DiffResult
+from services.ai_config import load_ai_config
+from services.git_service import GitService
 
 
 class AIService:
@@ -26,21 +25,21 @@ class AIService:
 
     @property
     def model(self) -> str:
-        return os.getenv("OPENAI_MODEL", "deepseek-chat")
+        return load_ai_config()["model"]
 
     @property
     def client(self):
-        api_key = os.getenv("OPENAI_API_KEY", "")
+        config = load_ai_config()
+        api_key = config["api_key"]
         if not api_key:
             return None
-        base_url = os.getenv("OPENAI_BASE_URL", "https://api.deepseek.com/v1")
-        return AsyncOpenAI(api_key=api_key, base_url=base_url)
+        return AsyncOpenAI(api_key=api_key, base_url=config["base_url"])
 
     def is_available(self) -> bool:
         """Check if AI service is configured and available."""
-        return bool(os.getenv("OPENAI_API_KEY", ""))
+        return bool(load_ai_config()["api_key"])
 
-    async def summarize_commit(self, sha: str, file_path: Optional[str] = None) -> dict:
+    async def summarize_commit(self, sha: str, file_path: str | None = None) -> dict:
         """
         Generate an AI summary of what a commit did and why.
         If file_path is provided, focuses on changes to that file.
@@ -319,7 +318,7 @@ JSON 格式：
             answer = response.choices[0].message.content or ""
             return {"answer": answer}
         except Exception as e:
-            return {"answer": f"AI 调用失败: {str(e)}"}
+            return {"answer": f"AI 调用失败: {e!s}"}
 
     async def _call_llm(self, prompt: str) -> str:
         """Call the LLM API."""
@@ -338,7 +337,7 @@ JSON 格式：
             )
             return response.choices[0].message.content or ""
         except Exception as e:
-            return json.dumps({"error": f"LLM call failed: {str(e)}"})
+            return json.dumps({"error": f"LLM call failed: {e!s}"})
 
     def _parse_json_response(self, response: str) -> dict:
         """Parse LLM response as JSON, handling markdown code blocks."""

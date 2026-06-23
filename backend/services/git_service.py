@@ -10,10 +10,9 @@ Provides all git-related data operations:
 """
 import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 import git
-from git import Repo, Commit
+from git import Commit, Repo
 
 
 @dataclass
@@ -29,6 +28,8 @@ class CommitInfo:
     files_changed: int = 0
     insertions: int = 0
     deletions: int = 0
+    rename_from: str = ""
+    rename_to: str = ""
 
 
 @dataclass
@@ -103,11 +104,47 @@ class GitService:
         """
         Get commit history for a specific file.
         Returns commits ordered from newest to oldest.
+        Uses --follow to track file renames.
         """
         commits = []
-        for commit in self.repo.iter_commits(ref, paths=file_path, max_count=max_count):
-            info = self._commit_to_info(commit)
-            commits.append(info)
+        try:
+            # Use git log --follow with --name-status to detect renames
+            log_output = self.repo.git.log(
+                ref,
+                '--follow',
+                f'--max-count={max_count}',
+                '--format=%H',
+                '--name-status',
+                '--',
+                file_path,
+            )
+            if not log_output.strip():
+                return []
+
+            lines = log_output.strip().split('\n')
+            current_sha = None
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                # 40-char hex = commit SHA
+                if len(line) == 40 and all(c in '0123456789abcdef' for c in line):
+                    current_sha = line
+                    try:
+                        commit = self.repo.commit(current_sha)
+                        commits.append(self._commit_to_info(commit))
+                    except Exception:
+                        current_sha = None
+                elif current_sha and line.startswith('R'):
+                    # Rename line: R100\told_path\tnew_path
+                    parts = line.split('\t')
+                    if len(parts) >= 3 and commits:
+                        commits[-1].rename_from = parts[1]
+                        commits[-1].rename_to = parts[2]
+        except Exception:
+            # Fallback to iter_commits without --follow
+            for commit in self.repo.iter_commits(ref, paths=file_path, max_count=max_count):
+                commits.append(self._commit_to_info(commit))
         return commits
 
     def get_file_blame(self, file_path: str, ref: str = "HEAD") -> list[BlameEntry]:
@@ -144,7 +181,7 @@ class GitService:
 
     def get_diff(
         self, file_path: str, old_ref: str, new_ref: str = "HEAD"
-    ) -> Optional[DiffResult]:
+    ) -> DiffResult | None:
         """
         Get the diff of a specific file between two refs (commits/branches/tags).
         """
@@ -171,7 +208,7 @@ class GitService:
 
         return None
 
-    def get_commit_detail(self, sha: str) -> Optional[dict]:
+    def get_commit_detail(self, sha: str) -> dict | None:
         """Get detailed information about a specific commit."""
         try:
             commit = self.repo.commit(sha)
@@ -196,7 +233,7 @@ class GitService:
             "changed_files": changed_files,
         }
 
-    def get_file_content(self, file_path: str, ref: str = "HEAD") -> Optional[str]:
+    def get_file_content(self, file_path: str, ref: str = "HEAD") -> str | None:
         """Get file content at a specific ref."""
         try:
             blob = self.repo.commit(ref).tree[file_path]
@@ -212,6 +249,15 @@ class GitService:
         """Get recent commits across the whole repo."""
         commits = []
         for commit in self.repo.iter_commits(ref, max_count=max_count):
+            commits.append(self._commit_to_info(commit))
+        return commits
+
+    def get_commits_since(self, since_timestamp: int, ref: str = "HEAD") -> list[CommitInfo]:
+        """Get commits newer than the given Unix timestamp."""
+        commits = []
+        for commit in self.repo.iter_commits(ref):
+            if commit.committed_date < since_timestamp:
+                break
             commits.append(self._commit_to_info(commit))
         return commits
 

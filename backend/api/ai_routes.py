@@ -30,12 +30,12 @@ class ChatRequest(BaseModel):
 
 
 @router.get("/status")
-async def ai_status():
+async def ai_status(repo_path: str = Query(default="")):
     """Check if AI service is configured and available."""
-    repo_path = app_state.current_repo_path
-    if not repo_path:
+    path = repo_path or app_state.current_repo_path
+    if not path:
         return {"available": False, "reason": "No repository configured"}
-    svc = get_ai_service(repo_path)
+    svc = get_ai_service(path)
     return {"available": svc.is_available(), "model": svc.model}
 
 
