@@ -66,14 +66,6 @@ export default function FileSearch({ onSelectFile }: Props) {
     setShowResults(false)
   }
 
-  // Highlight matching parts in path
-  function highlightMatch(path: string) {
-    const parts = query.toLowerCase().split(/\s+/)
-    let highlighted = path
-    // Simple: just return the path, matching parts are in bold via CSS
-    return path
-  }
-
   return (
     <div ref={containerRef} className="relative">
       <div className="relative">

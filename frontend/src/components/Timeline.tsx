@@ -1,24 +1,7 @@
 import { Brain, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
 import { useState } from 'react'
-import { getDiff } from '../apis'
-
-interface CommitInfo {
-  sha: string
-  short_sha: string
-  author_name: string
-  author_email: string
-  date: string
-  timestamp: number
-  message: string
-}
-
-interface HotspotInfo {
-  start_line: number
-  end_line: number
-  modification_count: number
-  last_modified_by: string
-  last_modified_date: string
-}
+import { getDiff, type CommitInfo, type HotspotInfo } from '../apis'
+import { parseDiff, type DiffLine } from '../utils/parseDiff'
 
 interface TimelineProps {
   commits: CommitInfo[]
@@ -26,13 +9,6 @@ interface TimelineProps {
   filePath: string
   onSummarize: (sha: string) => void
   aiLoading: boolean
-}
-
-interface DiffLine {
-  type: 'add' | 'remove' | 'context' | 'header'
-  content: string
-  oldLineNum?: number
-  newLineNum?: number
 }
 
 export default function Timeline({ commits, hotspots, filePath, onSummarize, aiLoading }: TimelineProps) {
@@ -141,6 +117,14 @@ export default function Timeline({ commits, hotspots, filePath, onSummarize, aiL
                     >
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-[var(--color-text-primary)]">{commit.message}</p>
+                        {commit.rename_from && (
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="px-1.5 py-0.5 text-[10px] rounded bg-blue-50 text-blue-600 border border-blue-200 font-medium">重命名</span>
+                            <span className="text-[11px] text-[var(--color-text-muted)] font-mono truncate">
+                              {commit.rename_from} → {commit.rename_to}
+                            </span>
+                          </div>
+                        )}
                         <div className="flex items-center gap-3 mt-1.5">
                           <span className="text-xs text-[var(--color-text-muted)]">{commit.author_name}</span>
                           <code className="text-xs text-[var(--color-brand)] font-mono bg-[var(--color-brand-light)] px-1 py-0.5 rounded">{commit.short_sha}</code>
@@ -222,35 +206,4 @@ export default function Timeline({ commits, hotspots, filePath, onSummarize, aiL
       </div>
     </div>
   )
-}
-
-
-function parseDiff(text: string): DiffLine[] {
-  if (!text) return []
-  const lines = text.split('\n')
-  const result: DiffLine[] = []
-  let oldLine = 0
-  let newLine = 0
-
-  for (const line of lines) {
-    if (line.startsWith('@@')) {
-      const match = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
-      if (match) {
-        oldLine = parseInt(match[1]) - 1
-        newLine = parseInt(match[2]) - 1
-      }
-      result.push({ type: 'header', content: line })
-    } else if (line.startsWith('+') && !line.startsWith('+++')) {
-      newLine++
-      result.push({ type: 'add', content: line.substring(1), newLineNum: newLine })
-    } else if (line.startsWith('-') && !line.startsWith('---')) {
-      oldLine++
-      result.push({ type: 'remove', content: line.substring(1), oldLineNum: oldLine })
-    } else if (!line.startsWith('+++') && !line.startsWith('---')) {
-      oldLine++
-      newLine++
-      result.push({ type: 'context', content: line.startsWith(' ') ? line.substring(1) : line, oldLineNum: oldLine, newLineNum: newLine })
-    }
-  }
-  return result
 }

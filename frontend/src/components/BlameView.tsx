@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { User, Clock, GitCommit, Brain } from 'lucide-react'
+import { User, Clock, GitCommit } from 'lucide-react'
 import { getFileBlame } from '../apis'
 
 interface BlameEntry {
@@ -25,7 +25,7 @@ const AUTHOR_COLORS = [
   '#3491fa', '#7ee787', '#9fdb1d', '#f5319d', '#ff7d00',
 ]
 
-export default function BlameView({ filePath, onSummarize }: Props) {
+export default function BlameView({ filePath }: Props) {
   const [entries, setEntries] = useState<BlameEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [hoveredCommit, setHoveredCommit] = useState<string | null>(null)
