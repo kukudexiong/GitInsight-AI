@@ -49,27 +49,55 @@ GitLab 告诉你"谁在什么时候改了哪行"。GitInsight AI 告诉你：
 
 | 层 | 技术 |
 |----|------|
-| 后端 | Python 3.11 + FastAPI + GitPython + Watchdog |
+| 后端 | Python 3.10+ / FastAPI / GitPython / Watchdog |
 | 前端 | React 18 + TypeScript + Vite + Tailwind CSS + Recharts |
 | AI | DeepSeek / OpenAI（兼容 OpenAI 格式的任何 LLM） |
 | 数据源 | 本地 .git 仓库（零配置，无需网络） |
 
 ## 快速启动
 
+### 方式一：一键启动（推荐）
+
+双击项目根目录的 `start.bat`，脚本会自动完成所有准备工作：
+
+```bash
+# Windows
+双击 start.bat
+```
+
+脚本会智能处理以下步骤，**已完成的步骤自动跳过**：
+
+1. 检查 Python / Node.js / Git 环境
+2. 创建 Python 虚拟环境 & 安装依赖
+3. 从 `.env.example` 生成 `.env` 配置文件
+4. 安装前端 npm 依赖
+5. 分别在独立窗口启动后端和前端
+6. 自动打开浏览器访问前端页面
+
+> 关闭对应的命令行窗口即可停止服务。
+
+### 方式二：手动启动
+
 ```bash
 # 1. 安装后端依赖
 cd backend
+python -m venv venv
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # macOS/Linux
 pip install -r requirements.txt
 
-# 2. 启动后端
+# 2. 配置环境变量
+copy .env.example .env       # 然后编辑 .env 填入 API Key
+
+# 3. 启动后端
 python main.py
 # → 后端运行在 http://localhost:8000
 
-# 3. 安装前端依赖
-cd ../frontend
+# 4. 安装前端依赖（新开一个终端）
+cd frontend
 npm install
 
-# 4. 启动前端
+# 5. 启动前端
 npm run dev
 # → 前端运行在 http://localhost:5173
 ```
@@ -78,7 +106,10 @@ npm run dev
 
 ## AI 配置（可选）
 
-AI 功能需要配置 LLM API Key。点击右上角 ⚙️ 设置：
+AI 功能需要配置 LLM API Key，有两种方式：
+
+- **界面配置**：启动后点击右上角 ⚙️ 设置，填入以下信息
+- **文件配置**：编辑 `backend/.env` 文件（首次启动脚本会自动从 `.env.example` 生成）
 
 | 字段 | DeepSeek 配置 | OpenAI 配置 |
 |------|--------------|------------|
@@ -92,44 +123,64 @@ AI 功能需要配置 LLM API Key。点击右上角 ⚙️ 设置：
 
 ```
 git-insight-ai/
+├── start.bat                   # Windows 一键启动脚本
 ├── backend/                    # Python FastAPI 后端
 │   ├── main.py                # 入口 + WebSocket 端点
+│   ├── .env.example           # 环境变量示例
+│   ├── requirements.txt       # Python 依赖
+│   ├── ruff.toml              # Ruff 代码格式化配置
 │   ├── api/                   # REST API 路由
 │   │   ├── git_routes.py     # Git 数据接口（tree/history/blame/diff）
 │   │   ├── ai_routes.py      # AI 分析接口（summarize/chat/evolution）
 │   │   ├── stats_routes.py   # 统计接口（contributions/bus-factor/hotspots）
 │   │   ├── dashboard_routes.py # 仪表盘接口
-│   │   └── settings_routes.py # 设置 + 文件搜索
-│   ├── services/              # 业务逻辑
-│   │   ├── git_service.py    # Git 数据提取（GitPython）
-│   │   ├── ai_service.py     # LLM 调用与 Prompt 工程
-│   │   ├── stats_service.py  # 统计分析计算
-│   │   └── git_watcher.py    # 文件系统监听 + WebSocket 推送
-│   └── requirements.txt
+│   │   ├── settings_routes.py # 设置 + 文件搜索
+│   │   ├── dependencies.py   # 依赖注入（公共参数提取）
+│   │   └── state.py          # 应用全局状态管理
+│   └── services/              # 业务逻辑
+│       ├── git_service.py    # Git 数据提取（GitPython）
+│       ├── ai_service.py     # LLM 调用与 Prompt 工程
+│       ├── ai_config.py      # AI 配置管理（Key/URL/Model）
+│       ├── stats_service.py  # 统计分析计算
+│       └── git_watcher.py    # 文件系统监听 + WebSocket 推送
 ├── frontend/                   # React + TypeScript 前端
+│   ├── package.json
 │   └── src/
+│       ├── App.tsx            # 路由入口
+│       ├── main.tsx           # 渲染入口
+│       ├── index.css          # 全局样式（Tailwind）
 │       ├── apis/index.ts      # 统一 API 调用层
 │       ├── components/        # UI 组件
+│       │   ├── Layout.tsx            # 全局布局
 │       │   ├── Timeline.tsx          # 时间线（含内联 diff 展开）
+│       │   ├── CommitListItem.tsx    # 单条 commit 展示
 │       │   ├── BlameView.tsx         # 逐行归属
 │       │   ├── DiffView.tsx          # 版本对比
+│       │   ├── Minimap.tsx           # 代码缩略图
 │       │   ├── ContributionChart.tsx  # 贡献者图表
 │       │   ├── BusFactorBadge.tsx    # Bus Factor 徽章
 │       │   ├── KnowledgeDistribution.tsx # 知识分布图
+│       │   ├── DashboardInline.tsx   # 内联仪表盘
+│       │   ├── StatCard.tsx          # 统计卡片
+│       │   ├── StatDetailModal.tsx   # 统计详情弹窗
 │       │   ├── FunctionEvolution.tsx  # 符号追踪
 │       │   ├── AIChatPanel.tsx       # AI 对话
 │       │   ├── AISummaryPanel.tsx    # AI 摘要展示
 │       │   ├── FileTreeView.tsx      # 递归文件树
 │       │   ├── FileSearch.tsx        # 文件搜索
 │       │   ├── SettingsModal.tsx     # 设置弹窗
-│       │   ├── Layout.tsx            # 全局布局
-│       │   └── Skeleton.tsx          # 加载骨架屏
+│       │   ├── ErrorBoundary.tsx     # 错误边界
+│       │   ├── Skeleton.tsx          # 加载骨架屏
+│       │   └── TabButton.tsx         # 标签切换按钮
 │       ├── hooks/
 │       │   └── useGitWatcher.ts     # WebSocket 实时监听 hook
+│       ├── utils/
+│       │   ├── getAuthorAvatar.ts   # 作者头像生成
+│       │   └── parseDiff.ts         # Diff 文本解析
 │       └── pages/
 │           ├── HomePage.tsx          # 首页（输入仓库 + 历史记录）
-│           ├── FileInsightPage.tsx   # 主页面（文件树 + 分析面板 + 仪表盘）
-│           └── DashboardPage.tsx     # 独立仪表盘页面
+│           └── FileInsightPage.tsx   # 主页面（文件树 + 分析面板 + 仪表盘）
+├── .editorconfig               # 编辑器统一配置
 ├── .gitignore
 └── README.md
 ```
