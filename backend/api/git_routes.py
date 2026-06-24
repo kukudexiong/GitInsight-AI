@@ -45,6 +45,33 @@ async def get_repo():
     return {"repo_path": app_state.current_repo_path or ""}
 
 
+@router.post("/browse-folder")
+async def browse_folder():
+    """Open a native folder selection dialog and return the chosen path."""
+    import tkinter as tk
+    from tkinter import filedialog
+    import threading
+
+    result = {"path": ""}
+
+    def pick():
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        folder = filedialog.askdirectory(title="选择 Git 仓库目录")
+        root.destroy()
+        result["path"] = folder or ""
+
+    # Run in thread to avoid blocking the event loop
+    thread = threading.Thread(target=pick)
+    thread.start()
+    thread.join(timeout=60)
+
+    if not result["path"]:
+        return {"path": "", "error": "未选择目录"}
+    return {"path": result["path"]}
+
+
 @router.get("/tree")
 async def get_file_tree(
     path: str = "",
@@ -83,9 +110,11 @@ async def get_file_blame(
     """Get blame information for a file."""
     svc = _get_service(repo_path)
     entries = svc.get_file_blame(file_path, ref)
+    total_lines = entries[-1].end_line if entries else 0
     return {
         "file_path": file_path,
         "ref": ref,
+        "total_lines": total_lines,
         "entries": [e.__dict__ for e in entries],
     }
 

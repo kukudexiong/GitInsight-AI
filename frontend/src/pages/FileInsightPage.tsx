@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { File, Clock, Users, Brain, GitCompareArrows, Code, TrendingUp, Network, Loader2, X } from 'lucide-react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
+import { File, Clock, Users, Brain, GitCompareArrows, Code, TrendingUp, Network, Loader2, ArrowLeft } from 'lucide-react'
 import {
   getFileHistory,
   getAuthorContributions,
@@ -32,9 +33,20 @@ import { SkeletonTimeline } from '../components/Skeleton'
 import { useGitWatcher } from '../hooks/useGitWatcher'
 
 export default function FileInsightPage() {
-  const [selectedFile, setSelectedFile] = useState<string>('')
-  const [currentDirectory, setCurrentDirectory] = useState<string>('')
-  const [expandToPath, setExpandToPath] = useState<string>('')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
+
+  // Initialize from URL params
+  const initialFile = searchParams.get('file') || ''
+  const initialTab = searchParams.get('tab') || 'timeline'
+
+  type TabType = 'timeline' | 'blame' | 'diff' | 'contributors' | 'ai' | 'evolution' | 'knowledge' | 'chat'
+
+  const [selectedFile, setSelectedFile] = useState<string>(initialFile)
+  const [currentDirectory, setCurrentDirectory] = useState<string>(
+    initialFile.includes('/') ? initialFile.substring(0, initialFile.lastIndexOf('/')) : ''
+  )
+  const [expandToPath, setExpandToPath] = useState<string>(initialFile)
   const [commits, setCommits] = useState<CommitInfo[]>([])
   const [contributions, setContributions] = useState<AuthorContribution[]>([])
   const [busFactor, setBusFactor] = useState<BusFactorResult | null>(null)
@@ -42,12 +54,19 @@ export default function FileInsightPage() {
   const [aiSummary, setAiSummary] = useState<AISummary | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [dataLoading, setDataLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'timeline' | 'blame' | 'diff' | 'contributors' | 'ai' | 'evolution' | 'knowledge' | 'chat'>('timeline')
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab as TabType)
   const [sidebarWidth, setSidebarWidth] = useState(260)
   const [isResizing, setIsResizing] = useState(false)
   const [dashboardData, setDashboardData] = useState<DashboardOverview | null>(null)
   const [dashboardLoading, setDashboardLoading] = useState(true)
 
+  // Sync state to URL
+  useEffect(() => {
+    const params: Record<string, string> = {}
+    if (selectedFile) params.file = selectedFile
+    if (activeTab !== 'timeline') params.tab = activeTab
+    setSearchParams(params, { replace: true })
+  }, [selectedFile, activeTab])
   // Check repo on mount
   useEffect(() => {
     checkRepo()
@@ -74,13 +93,13 @@ export default function FileInsightPage() {
     try {
       const data = await getRepoPath()
       if (!data.repo_path) {
-        window.location.href = '/'
+        navigate('/')
         return
       }
       // Load dashboard asynchronously - doesn't block file tree
       loadDashboard()
     } catch {
-      window.location.href = '/'
+      navigate('/')
     }
   }
 
@@ -235,7 +254,12 @@ export default function FileInsightPage() {
                 </div>
               </div>
             ) : dashboardData ? (
-              <DashboardInline data={dashboardData} />
+              <DashboardInline data={dashboardData} onFileClick={(path) => {
+                setSelectedFile(path)
+                setExpandToPath(path)
+                const dir = path.includes('/') ? path.substring(0, path.lastIndexOf('/')) : ''
+                setCurrentDirectory(dir)
+              }} />
             ) : (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center text-[var(--color-text-muted)]">
@@ -249,19 +273,21 @@ export default function FileInsightPage() {
           <div className="p-5">
             {/* File Header */}
             <div className="flex items-center justify-between mb-5">
-              <div className="min-w-0 flex-1">
-                <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">{selectedFile.split('/').pop()}</h2>
-                <p className="text-xs text-[var(--color-text-muted)] mt-0.5 font-mono">{selectedFile}</p>
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <button
+                  onClick={() => setSelectedFile('')}
+                  className="p-1.5 rounded-md hover:bg-[var(--color-hover)] text-[var(--color-text-muted)] hover:text-[var(--color-brand)] transition-colors flex-shrink-0"
+                  title="返回概览"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <div className="min-w-0">
+                  <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">{selectedFile.split('/').pop()}</h2>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5 font-mono truncate">{selectedFile}</p>
+                </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 {busFactor && <BusFactorBadge data={busFactor} />}
-                <button
-                  onClick={() => setSelectedFile('')}
-                  className="p-1.5 rounded-md hover:bg-[var(--color-hover)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
-                  title="关闭文件"
-                >
-                  <X className="h-4 w-4" />
-                </button>
               </div>
             </div>
 

@@ -87,6 +87,7 @@ export interface DashboardOverview {
     change_count: number
   }>
   recent_commits: DashboardCommit[]
+  all_commits_7d: DashboardCommit[]
 }
 
 export interface AISummary {
@@ -140,6 +141,11 @@ export async function getRepoPath() {
   if (!res.data.repo_path && getStoredRepoPath()) {
     return { ...res.data, repo_path: getStoredRepoPath() }
   }
+  return res.data
+}
+
+export async function browseFolder(): Promise<{ path: string; error?: string }> {
+  const res = await api.post('/git/browse-folder')
   return res.data
 }
 
@@ -235,6 +241,42 @@ export async function getBusFactor(filePath: string): Promise<BusFactorResult> {
 export async function getKnowledgeDistribution(directory = '') {
   const res = await api.get('/stats/knowledge-distribution', { params: { directory } })
   return res.data
+}
+
+export function streamKnowledgeDistribution(
+  directory: string,
+  onProgress: (processed: number, total: number, percent: number) => void,
+  onComplete: (distribution: Array<{ author_name: string; files_owned: number; lines_owned: number }>) => void,
+  onError: (err: Error) => void,
+): () => void {
+  const repoPath = getStoredRepoPath()
+  const params = new URLSearchParams({ directory })
+  if (repoPath) params.set('repo_path', repoPath)
+  const url = `/api/stats/knowledge-distribution/stream?${params.toString()}`
+
+  const eventSource = new EventSource(url)
+
+  eventSource.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data)
+      if (data.type === 'progress') {
+        onProgress(data.processed, data.total, data.percent)
+      } else if (data.type === 'complete') {
+        onComplete(data.distribution)
+        eventSource.close()
+      }
+    } catch (e) {
+      // ignore parse errors
+    }
+  }
+
+  eventSource.onerror = () => {
+    onError(new Error('SSE connection failed'))
+    eventSource.close()
+  }
+
+  // Return cleanup function
+  return () => eventSource.close()
 }
 
 export async function getCollaborationPatterns(filePath: string) {

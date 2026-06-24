@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Loader2, Users, FolderTree } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
-import { getKnowledgeDistribution } from '../apis'
+import { streamKnowledgeDistribution } from '../apis'
 
 interface KnowledgeEntry {
   author_name: string
@@ -18,29 +18,58 @@ const COLORS = ['#165dff', '#00b42a', '#722ed1', '#f77234', '#0fc6c2', '#3491fa'
 export default function KnowledgeDistribution({ directory = '' }: Props) {
   const [data, setData] = useState<KnowledgeEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [progress, setProgress] = useState({ processed: 0, total: 0, percent: 0 })
   const [viewMode, setViewMode] = useState<'lines' | 'files'>('lines')
+  const cleanupRef = useRef<(() => void) | null>(null)
+  const directoryRef = useRef(directory)
+
+  if (directoryRef.current !== directory) {
+    directoryRef.current = directory
+    setLoading(true)
+    setProgress({ processed: 0, total: 0, percent: 0 })
+  }
 
   useEffect(() => {
-    loadData()
-  }, [directory])
+    if (cleanupRef.current) cleanupRef.current()
 
-  async function loadData() {
-    setLoading(true)
-    try {
-      const result = await getKnowledgeDistribution(directory)
-      setData(result.distribution || [])
-    } catch (err) {
-      console.error('Failed to load knowledge distribution:', err)
-    } finally {
-      setLoading(false)
+    cleanupRef.current = streamKnowledgeDistribution(
+      directory,
+      (processed, total, percent) => {
+        setProgress({ processed, total, percent })
+      },
+      (distribution) => {
+        setData(distribution)
+        setLoading(false)
+      },
+      (_err) => {
+        setLoading(false)
+      },
+    )
+
+    return () => {
+      if (cleanupRef.current) cleanupRef.current()
     }
-  }
+  }, [directory])
 
   if (loading) {
     return (
       <div className="flex flex-col items-center py-12">
         <Loader2 className="h-8 w-8 text-[var(--color-brand)] animate-spin mb-3" />
-        <p className="text-sm text-[var(--color-text-muted)]">正在分析知识分布...</p>
+        {progress.total > 0 ? (
+          <>
+            <p className="text-sm text-[var(--color-text-muted)]">
+              正在分析知识分布... {progress.processed}/{progress.total} 文件
+            </p>
+            <div className="w-48 h-1.5 bg-[var(--color-surface-2)] rounded-full mt-2 overflow-hidden">
+              <div
+                className="h-full bg-[var(--color-brand)] rounded-full transition-all duration-300"
+                style={{ width: `${progress.percent}%` }}
+              />
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-[var(--color-text-muted)]">正在分析知识分布...</p>
+        )}
       </div>
     )
   }

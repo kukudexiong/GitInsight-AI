@@ -75,10 +75,11 @@ async def get_dashboard_overview(repo_path: str = Query(default="")):
         },
         "activity": activity,
         "top_contributors": top_contributors,
-        "hot_files": hot_files[:10],
-        "risk_files": risk_files[:5],
-        "knowledge_silos": knowledge_silos[:8],
+        "hot_files": hot_files[:100],
+        "risk_files": risk_files,
+        "knowledge_silos": knowledge_silos,
         "recent_commits": recent_history,
+        "all_commits_7d": _commits_to_simple_list(commits_30d),
     }
     if len(_dashboard_cache) >= _DASHBOARD_CACHE_MAX_SIZE:
         _dashboard_cache.clear()
@@ -116,7 +117,7 @@ def _compute_top_contributors(commits) -> list[dict]:
 
     return [
         {"author_name": name, "commit_count": count}
-        for name, count in counter.most_common(10)
+        for name, count in counter.most_common()
     ]
 
 
@@ -192,6 +193,39 @@ def _compute_risk_analysis(git_svc, stats_svc, hot_files) -> tuple[list, list]:
             continue
 
     return risk_files, knowledge_silos
+
+
+def _commits_to_simple_list(commits) -> list[dict]:
+    """Convert commits to lightweight dicts (no diff computation)."""
+    now = int(time.time())
+    result = []
+    for c in commits:
+        diff_sec = now - c.timestamp
+        if diff_sec < 60:
+            time_ago = "刚刚"
+        elif diff_sec < 3600:
+            time_ago = f"{diff_sec // 60} 分钟前"
+        elif diff_sec < 86400:
+            time_ago = f"{diff_sec // 3600} 小时前"
+        elif diff_sec < 604800:
+            time_ago = f"{diff_sec // 86400} 天前"
+        else:
+            time_ago = c.date.split('T')[0]
+
+        result.append({
+            "sha": c.sha,
+            "short_sha": c.short_sha,
+            "author_name": c.author_name,
+            "author_email": c.author_email,
+            "message": c.message,
+            "date": c.date,
+            "time_ago": time_ago,
+            "is_merge": False,
+            "merge_source": "",
+            "changed_files": [],
+            "changed_files_count": 0,
+        })
+    return result
 
 
 def _compute_recent_history(git_svc, commits) -> list[dict]:

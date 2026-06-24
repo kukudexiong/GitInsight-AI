@@ -1,16 +1,27 @@
 import { useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useNavigate } from 'react-router-dom'
 import { GitBranch, Settings } from 'lucide-react'
 import SettingsModal from './SettingsModal'
+import { clearStoredRepoPath } from '../apis'
 
 export default function Layout() {
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const navigate = useNavigate()
+
+  function handleLogoClick() {
+    clearStoredRepoPath()
+    navigate('/')
+  }
 
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
       <header className="border-b border-[var(--color-border)] bg-white px-5 py-2.5 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
+        <div
+          className="flex items-center gap-2.5 cursor-pointer hover:opacity-80 transition-opacity"
+          onClick={handleLogoClick}
+          title="返回首页"
+        >
           <GitBranch className="h-5 w-5 text-[var(--color-brand)]" />
           <h1 className="text-base font-semibold text-[var(--color-text-primary)]">
             GitInsight AI

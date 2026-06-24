@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FolderOpen, ArrowRight, GitBranch, Users, Brain, Clock, X } from 'lucide-react'
-import { setRepoPath } from '../apis'
+import { FolderOpen, ArrowRight, GitBranch, Users, Brain, Clock, X, FolderSearch } from 'lucide-react'
+import { setRepoPath, browseFolder } from '../apis'
 
 const HISTORY_KEY = 'git-insight-repo-history'
 const MAX_HISTORY = 5
@@ -51,6 +51,17 @@ export default function HomePage() {
       setError(err.response?.data?.detail || '无法打开仓库，请检查路径是否正确')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleBrowseFolder() {
+    try {
+      const result = await browseFolder()
+      if (result.path) {
+        setRepoPathState(result.path)
+      }
+    } catch {
+      // Dialog was cancelled or failed
     }
   }
 
@@ -104,6 +115,15 @@ export default function HomePage() {
               className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)]"
             />
           </div>
+          <button
+            type="button"
+            onClick={handleBrowseFolder}
+            disabled={loading}
+            className="px-3 py-2.5 border border-[var(--color-border)] hover:border-[var(--color-brand)] hover:bg-[var(--color-hover)] text-[var(--color-text-muted)] hover:text-[var(--color-brand)] rounded-lg transition-colors"
+            title="选择文件夹"
+          >
+            <FolderSearch className="h-4.5 w-4.5" />
+          </button>
           <button
             type="submit"
             disabled={loading || !repoPath.trim()}

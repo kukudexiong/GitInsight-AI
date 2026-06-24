@@ -5,9 +5,10 @@ interface CommitListItemProps {
   commit: DashboardCommit
   expanded: boolean
   onToggle: () => void
+  onFileClick?: (filePath: string) => void
 }
 
-export default function CommitListItem({ commit, expanded, onToggle }: CommitListItemProps) {
+export default function CommitListItem({ commit, expanded, onToggle, onFileClick }: CommitListItemProps) {
   const avatar = getAuthorAvatar(commit.author_name)
 
   return (
@@ -75,8 +76,17 @@ export default function CommitListItem({ commit, expanded, onToggle }: CommitLis
             <p className="text-[11px] text-[var(--color-text-muted)] mb-1.5 font-medium">变更文件：</p>
             <div className="space-y-1">
               {commit.changed_files.map((f, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs">
-                  <span className={`w-4 text-center font-mono font-bold ${
+                <div
+                  key={i}
+                  className={`flex items-center gap-2 text-xs ${onFileClick ? 'cursor-pointer hover:text-[var(--color-brand)] hover:bg-[var(--color-hover)] -mx-1.5 px-1.5 py-0.5 rounded transition-colors' : ''}`}
+                  onClick={(e) => {
+                    if (onFileClick && f.change_type !== 'D') {
+                      e.stopPropagation()
+                      onFileClick(f.path)
+                    }
+                  }}
+                >
+                  <span className={`w-4 text-center font-mono font-bold flex-shrink-0 ${
                     f.change_type === 'A' ? 'text-green-600' :
                     f.change_type === 'D' ? 'text-red-600' :
                     f.change_type === 'R' ? 'text-blue-600' :
@@ -84,7 +94,7 @@ export default function CommitListItem({ commit, expanded, onToggle }: CommitLis
                   }`}>
                     {f.change_type === 'A' ? '+' : f.change_type === 'D' ? '−' : f.change_type === 'R' ? '→' : '•'}
                   </span>
-                  <span className="text-[var(--color-text-secondary)] font-mono truncate">{f.path}</span>
+                  <span className="font-mono truncate">{f.path}</span>
                 </div>
               ))}
             </div>

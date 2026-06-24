@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { User, Clock, GitCommit } from 'lucide-react'
 import { getFileBlame } from '../apis'
+import Minimap from './Minimap'
 
 interface BlameEntry {
   commit_sha: string
@@ -30,16 +31,33 @@ export default function BlameView({ filePath }: Props) {
   const [loading, setLoading] = useState(true)
   const [hoveredCommit, setHoveredCommit] = useState<string | null>(null)
   const [selectedAuthor, setSelectedAuthor] = useState<string | null>(null)
+  const [totalLines, setTotalLines] = useState(0)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [scrollMeta, setScrollMeta] = useState({ visibleHeight: 550, totalHeight: 550 })
 
   useEffect(() => {
     loadBlame()
   }, [filePath])
+
+  // Track scroll container dimensions
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const update = () => {
+      setScrollMeta({ visibleHeight: el.clientHeight, totalHeight: el.scrollHeight })
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [entries])
 
   async function loadBlame() {
     setLoading(true)
     try {
       const data = await getFileBlame(filePath)
       setEntries(data.entries || [])
+      setTotalLines(data.total_lines || 0)
     } catch (err) {
       console.error('Failed to load blame:', err)
     } finally {
@@ -68,9 +86,24 @@ export default function BlameView({ filePath }: Props) {
     return Object.values(authorMap).sort((a, b) => b.lines - a.lines)
   }, [entries])
 
-  const totalLines = useMemo(() => {
-    return entries.reduce((acc, e) => acc + (e.end_line - e.start_line + 1), 0)
-  }, [entries])
+  // Build minimap data from blame entries
+  const minimapLines = useMemo(() => {
+    const result: Array<{ color?: string; textColor?: string; indent: number; hasContent: boolean }> = []
+    for (const entry of entries) {
+      const color = authorColorMap[entry.author_name]
+      for (const line of entry.content) {
+        const trimmed = line.replace(/^\s+/, '')
+        const indent = Math.min(20, line.length - trimmed.length)
+        result.push({
+          color,
+          textColor: trimmed.startsWith('#') || trimmed.startsWith('//') ? '#6a9955' : undefined,
+          indent,
+          hasContent: trimmed.length > 0,
+        })
+      }
+    }
+    return result
+  }, [entries, authorColorMap])
 
   if (loading) {
     return <div className="text-center py-12 text-[var(--color-text-muted)] text-sm">加载 Blame 数据中...</div>
@@ -85,7 +118,9 @@ export default function BlameView({ filePath }: Props) {
       {/* Author Legend / Filter */}
       <div className="mb-4 p-3 border border-[var(--color-border)] rounded-lg bg-[var(--color-surface)]">
         <div className="flex items-center justify-between mb-2">
-          <h4 className="text-xs font-medium text-[var(--color-text-muted)]">作者筛选</h4>
+          <h4 className="text-xs font-medium text-[var(--color-text-muted)]">
+            作者筛选 · 共 {totalLines.toLocaleString()} 行
+          </h4>
           {selectedAuthor && (
             <button onClick={() => setSelectedAuthor(null)} className="text-xs text-[var(--color-brand)] hover:underline">
               清除筛选
@@ -133,63 +168,74 @@ export default function BlameView({ filePath }: Props) {
         })}
       </div>
 
-      {/* Blame Code View */}
-      <div className="border border-[var(--color-border)] rounded-lg overflow-hidden">
-        <div className="overflow-x-auto max-h-[550px] overflow-y-auto">
-          <table className="w-full text-xs font-mono">
-            <tbody>
-              {entries.map((entry, entryIdx) => {
-                const isFiltered = selectedAuthor && selectedAuthor !== entry.author_name
-                const isHovered = hoveredCommit === entry.commit_sha
+      {/* Blame Code View + Minimap */}
+      <div className="flex gap-2">
+        {/* Code table */}
+        <div className="flex-1 border border-[var(--color-border)] rounded-lg overflow-hidden">
+          <div ref={scrollRef} className="overflow-x-auto max-h-[600px] overflow-y-auto">
+            <table className="w-full text-xs font-mono">
+              <tbody>
+                {entries.map((entry, entryIdx) => {
+                  const isFiltered = selectedAuthor && selectedAuthor !== entry.author_name
+                  const isHovered = hoveredCommit === entry.commit_sha
 
-                return entry.content.map((line, lineIdx) => {
-                  const lineNum = entry.start_line + lineIdx
-                  const isFirstLine = lineIdx === 0
-                  const authorColor = authorColorMap[entry.author_name]
+                  return entry.content.map((line, lineIdx) => {
+                    const lineNum = entry.start_line + lineIdx
+                    const isFirstLine = lineIdx === 0
+                    const authorColor = authorColorMap[entry.author_name]
 
-                  return (
-                    <tr
-                      key={`${entryIdx}-${lineIdx}`}
-                      className={`${isHovered ? 'bg-blue-50' : ''} ${isFiltered ? 'opacity-25' : ''} transition-opacity`}
-                      onMouseEnter={() => setHoveredCommit(entry.commit_sha)}
-                      onMouseLeave={() => setHoveredCommit(null)}
-                    >
-                      {/* Color indicator */}
-                      <td className="w-1 p-0">
-                        <div className="w-1 h-full min-h-[20px]" style={{ backgroundColor: authorColor }} />
-                      </td>
+                    return (
+                      <tr
+                        key={`${entryIdx}-${lineIdx}`}
+                        className={`${isHovered ? 'bg-blue-50' : ''} ${isFiltered ? 'opacity-25' : ''} transition-opacity`}
+                        onMouseEnter={() => setHoveredCommit(entry.commit_sha)}
+                        onMouseLeave={() => setHoveredCommit(null)}
+                      >
+                        {/* Color indicator */}
+                        <td className="w-1 p-0">
+                          <div className="w-1 h-full min-h-[20px]" style={{ backgroundColor: authorColor }} />
+                        </td>
 
-                      {/* Blame info */}
-                      <td className="w-48 px-2 py-0 border-r border-[var(--color-border-light)] whitespace-nowrap bg-[var(--color-surface)]">
-                        {isFirstLine ? (
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[var(--color-text-muted)] truncate max-w-[70px]" title={entry.author_name}>
-                              {entry.author_name}
-                            </span>
-                            <code className="text-[var(--color-brand)] text-[10px]">{entry.short_sha}</code>
-                            <span className="text-[var(--color-text-faint)] text-[10px]">
-                              {formatRelativeDate(entry.date)}
-                            </span>
-                          </div>
-                        ) : null}
-                      </td>
+                        {/* Blame info */}
+                        <td className="w-48 px-2 py-0 border-r border-[var(--color-border-light)] whitespace-nowrap bg-[var(--color-surface)]">
+                          {isFirstLine ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[var(--color-text-muted)] truncate max-w-[70px]" title={entry.author_name}>
+                                {entry.author_name}
+                              </span>
+                              <code className="text-[var(--color-brand)] text-[10px]">{entry.short_sha}</code>
+                              <span className="text-[var(--color-text-faint)] text-[10px]">
+                                {formatRelativeDate(entry.date)}
+                              </span>
+                            </div>
+                          ) : null}
+                        </td>
 
-                      {/* Line number */}
-                      <td className="w-10 text-right px-2 py-0 text-[var(--color-text-faint)] select-none border-r border-[var(--color-border-light)]">
-                        {lineNum}
-                      </td>
+                        {/* Line number */}
+                        <td className="w-10 text-right px-2 py-0 text-[var(--color-text-faint)] select-none border-r border-[var(--color-border-light)]">
+                          {lineNum}
+                        </td>
 
-                      {/* Code content */}
-                      <td className="px-3 py-0 whitespace-pre text-[var(--color-text-secondary)]">
-                        {line}
-                      </td>
-                    </tr>
-                  )
-                })
-              })}
-            </tbody>
-          </table>
+                        {/* Code content */}
+                        <td className="px-3 py-0 whitespace-pre text-[var(--color-text-secondary)]">
+                          {line}
+                        </td>
+                      </tr>
+                    )
+                  })
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
+
+        {/* Minimap */}
+        <Minimap
+          lines={minimapLines}
+          containerRef={scrollRef}
+          visibleHeight={scrollMeta.visibleHeight}
+          totalHeight={scrollMeta.totalHeight}
+        />
       </div>
 
       {/* Commit Detail Footer */}
