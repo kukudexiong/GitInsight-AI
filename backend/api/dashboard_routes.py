@@ -42,8 +42,14 @@ async def get_dashboard_overview(repo_path: str = Query(default="")):
         return cached[1]
 
     since_timestamp = int(now) - 7 * 24 * 3600
-    commits_30d = git_svc.get_commits_since(since_timestamp)
-    recent_commits = git_svc.get_recent_commits(max_count=30)
+
+    # Run independent computations concurrently
+    import asyncio
+    commits_30d, recent_commits, hot_files = await asyncio.gather(
+        asyncio.to_thread(git_svc.get_commits_since, since_timestamp),
+        asyncio.to_thread(git_svc.get_recent_commits, 30),
+        asyncio.to_thread(_compute_hot_files, git_svc, since_timestamp),
+    )
 
     # 1. Activity curve - commits per day, grouped by author
     activity = _compute_activity_curve(commits_30d)
@@ -51,16 +57,16 @@ async def get_dashboard_overview(repo_path: str = Query(default="")):
     # 2. Top contributors in last 7 days
     top_contributors = _compute_top_contributors(commits_30d)
 
-    # 3. Hot files - most frequently modified in last 7 days
-    hot_files = _compute_hot_files(git_svc, since_timestamp)
+    # 3. Hot files already computed above
 
-    # 4. High risk files & knowledge silos
-    risk_files, knowledge_silos = _compute_risk_analysis(git_svc, stats_svc, hot_files)
+    # 4. High risk files & knowledge silos (depends on hot_files)
+    risk_files, knowledge_silos = await asyncio.to_thread(
+        _compute_risk_analysis, git_svc, stats_svc, hot_files
+    )
 
     # 5. Basic stats
     total_commits_30d = len(commits_30d)
     active_authors = len(set(c.author_name for c in commits_30d))
-    # Hot files: files modified 3+ times in 30 days
     hot_files_count = len([f for f in hot_files if f["change_count"] >= 3])
 
     # 6. Recent commits (like GitLab history)

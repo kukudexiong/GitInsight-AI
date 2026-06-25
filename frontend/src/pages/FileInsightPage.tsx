@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { File, Clock, Users, Brain, GitCompareArrows, Code, TrendingUp, Network, Loader2, ArrowLeft } from 'lucide-react'
 import {
@@ -17,14 +17,14 @@ import {
   type HotspotInfo,
 } from '../apis'
 import Timeline from '../components/Timeline'
-import ContributionChart from '../components/ContributionChart'
+const ContributionChart = lazy(() => import('../components/ContributionChart'))
 import BusFactorBadge from '../components/BusFactorBadge'
 import AISummaryPanel from '../components/AISummaryPanel'
-import AIChatPanel from '../components/AIChatPanel'
+const AIChatPanel = lazy(() => import('../components/AIChatPanel'))
 import DiffView from '../components/DiffView'
 import BlameView from '../components/BlameView'
-import FunctionEvolution from '../components/FunctionEvolution'
-import KnowledgeDistribution from '../components/KnowledgeDistribution'
+const FunctionEvolution = lazy(() => import('../components/FunctionEvolution'))
+const KnowledgeDistribution = lazy(() => import('../components/KnowledgeDistribution'))
 import DashboardInline from '../components/DashboardInline'
 import TabButton from '../components/TabButton'
 import FileSearch from '../components/FileSearch'
@@ -67,6 +67,20 @@ export default function FileInsightPage() {
     if (activeTab !== 'timeline') params.tab = activeTab
     setSearchParams(params, { replace: true })
   }, [selectedFile, activeTab])
+
+  // Sync URL back to state (when navigating via logo click etc.)
+  useEffect(() => {
+    const fileFromUrl = searchParams.get('file') || ''
+    if (fileFromUrl !== selectedFile) {
+      setSelectedFile(fileFromUrl)
+      if (fileFromUrl) {
+        setExpandToPath(fileFromUrl)
+        const dir = fileFromUrl.includes('/') ? fileFromUrl.substring(0, fileFromUrl.lastIndexOf('/')) : ''
+        setCurrentDirectory(dir)
+      }
+    }
+  }, [searchParams])
+
   // Check repo on mount
   useEffect(() => {
     checkRepo()
@@ -75,19 +89,30 @@ export default function FileInsightPage() {
   // Real-time git change detection
   const handleGitChanged = useCallback(() => {
     if (selectedFile) {
-      loadFileData(selectedFile)
+      loadTimelineData(selectedFile)
     }
     loadDashboard()
   }, [selectedFile])
 
   useGitWatcher(handleGitChanged)
 
-  // Load file data when a file is selected
+  // Load file data when a file is selected — only load timeline (primary tab)
   useEffect(() => {
     if (selectedFile) {
-      loadFileData(selectedFile)
+      loadTimelineData(selectedFile)
     }
   }, [selectedFile])
+
+  // Load tab-specific data on demand when tab changes
+  useEffect(() => {
+    if (!selectedFile) return
+    if (activeTab === 'contributors' && contributions.length === 0) {
+      loadContributions(selectedFile)
+    }
+    if (activeTab === 'timeline' && commits.length === 0) {
+      loadTimelineData(selectedFile)
+    }
+  }, [activeTab, selectedFile])
 
   async function checkRepo() {
     try {
@@ -139,24 +164,33 @@ export default function FileInsightPage() {
     }
   }, [isResizing])
 
-  async function loadFileData(filePath: string) {
+  async function loadTimelineData(filePath: string) {
     setDataLoading(true)
     try {
-      const [historyData, contribData, busData, hotspotData] = await Promise.all([
+      const [historyData, hotspotData, busData] = await Promise.all([
         getFileHistory(filePath),
-        getAuthorContributions(filePath),
-        getBusFactor(filePath),
         getHotspots(filePath),
+        getBusFactor(filePath),
       ])
       setCommits(historyData.commits || [])
-      setContributions(contribData.contributions || [])
-      setBusFactor(busData)
       setHotspots(hotspotData.hotspots || [])
+      setBusFactor(busData)
       setAiSummary(null)
+      // Reset lazy-loaded data for new file
+      setContributions([])
     } catch (err) {
-      console.error('Failed to load file data:', err)
+      console.error('Failed to load timeline data:', err)
     } finally {
       setDataLoading(false)
+    }
+  }
+
+  async function loadContributions(filePath: string) {
+    try {
+      const contribData = await getAuthorContributions(filePath)
+      setContributions(contribData.contributions || [])
+    } catch (err) {
+      console.error('Failed to load contributions:', err)
     }
   }
 
@@ -241,7 +275,9 @@ export default function FileInsightPage() {
                 查看仓库中各成员的代码归属情况
               </p>
             </div>
-            <KnowledgeDistribution directory={currentDirectory} />
+            <Suspense fallback={<div className="py-8 text-center text-xs text-[var(--color-text-muted)]">加载中...</div>}>
+              <KnowledgeDistribution directory={currentDirectory} />
+            </Suspense>
           </div>
         ) : !selectedFile ? (
           <div className="p-5 overflow-y-auto h-full">
@@ -317,16 +353,22 @@ export default function FileInsightPage() {
                   <DiffView filePath={selectedFile} commits={commits} />
                 )}
                 {activeTab === 'contributors' && (
-                  <ContributionChart contributions={contributions} />
+                  <Suspense fallback={<div className="py-8 text-center text-xs text-[var(--color-text-muted)]">加载中...</div>}>
+                    <ContributionChart contributions={contributions} />
+                  </Suspense>
                 )}
                 {activeTab === 'evolution' && (
-                  <FunctionEvolution filePath={selectedFile} />
+                  <Suspense fallback={<div className="py-8 text-center text-xs text-[var(--color-text-muted)]">加载中...</div>}>
+                    <FunctionEvolution filePath={selectedFile} />
+                  </Suspense>
                 )}
                 {activeTab === 'ai' && (
                   <AISummaryPanel summary={aiSummary} loading={aiLoading} />
                 )}
                 {activeTab === 'chat' && (
-                  <AIChatPanel filePath={selectedFile} />
+                  <Suspense fallback={<div className="py-8 text-center text-xs text-[var(--color-text-muted)]">加载中...</div>}>
+                    <AIChatPanel filePath={selectedFile} />
+                  </Suspense>
                 )}
               </>
             )}

@@ -93,6 +93,30 @@ function CommitsDetail({ data, search }: { data: DashboardOverview; search: stri
   }
 
   const dates = Object.keys(grouped).sort().reverse()
+  const [expandedSha, setExpandedSha] = useState<string | null>(null)
+  const [changedFiles, setChangedFiles] = useState<Record<string, Array<{ path: string; change_type: string }>>>({})
+  const [loadingFiles, setLoadingFiles] = useState<string | null>(null)
+
+  async function handleToggle(sha: string) {
+    if (expandedSha === sha) {
+      setExpandedSha(null)
+      return
+    }
+    setExpandedSha(sha)
+    // Lazy load changed files if not cached
+    if (!changedFiles[sha]) {
+      setLoadingFiles(sha)
+      try {
+        const { getCommitDetail } = await import('../apis')
+        const detail = await getCommitDetail(sha)
+        setChangedFiles(prev => ({ ...prev, [sha]: detail.changed_files || [] }))
+      } catch {
+        setChangedFiles(prev => ({ ...prev, [sha]: [] }))
+      } finally {
+        setLoadingFiles(null)
+      }
+    }
+  }
 
   if (dates.length === 0) {
     return <EmptyState text="没有匹配的提交记录" />
@@ -100,27 +124,63 @@ function CommitsDetail({ data, search }: { data: DashboardOverview; search: stri
 
   return (
     <div className="space-y-4">
-      <p className="text-[10px] text-[var(--color-text-muted)]">共 {filtered.length} 条提交</p>
+      <p className="text-[10px] text-[var(--color-text-muted)]">共 {filtered.length} 条提交 · 点击展开查看变更文件</p>
       {dates.map(date => (
         <div key={date}>
-          <div className="flex items-center gap-2 mb-2 sticky top-0 bg-white py-1">
+          <div className="flex items-center gap-2 mb-2 sticky top-0 bg-white py-1 z-10">
             <span className="text-xs font-medium text-[var(--color-text-primary)]">{date}</span>
             <span className="text-xs text-[var(--color-text-muted)]">({grouped[date].length} 条)</span>
           </div>
           <div className="space-y-1 ml-2 border-l-2 border-[var(--color-border)] pl-3">
             {grouped[date].map(c => (
-              <div key={c.sha} className="py-1.5">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-xs text-[var(--color-text-primary)] leading-relaxed flex-1">{c.message}</p>
-                  <code className="text-[10px] text-[var(--color-text-muted)] font-mono flex-shrink-0">{c.short_sha}</code>
+              <div key={c.sha}>
+                <div
+                  className="py-1.5 cursor-pointer hover:bg-[var(--color-hover)] -ml-3 pl-3 -mr-2 pr-2 rounded transition-colors"
+                  onClick={() => handleToggle(c.sha)}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs text-[var(--color-text-primary)] leading-relaxed flex-1">{c.message}</p>
+                    <code className="text-[10px] text-[var(--color-brand)] font-mono flex-shrink-0">{c.short_sha}</code>
+                  </div>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    <span className="text-[10px] text-[var(--color-text-muted)]">{c.author_name}</span>
+                    <span className="text-[10px] text-[var(--color-text-muted)]">{c.time_ago}</span>
+                    {c.changed_files_count > 0 && (
+                      <span className="text-[10px] text-[var(--color-text-muted)]">{c.changed_files_count} 个文件</span>
+                    )}
+                    {c.is_merge && (
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-purple-50 text-purple-600 border border-purple-200">Merge</span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 mt-0.5">
-                  <span className="text-[10px] text-[var(--color-text-muted)]">{c.author_name}</span>
-                  <span className="text-[10px] text-[var(--color-text-muted)]">{c.time_ago}</span>
-                  {c.changed_files_count > 0 && (
-                    <span className="text-[10px] text-[var(--color-text-muted)]">{c.changed_files_count} 个文件</span>
-                  )}
-                </div>
+                {/* Lazy loaded changed files */}
+                {expandedSha === c.sha && (
+                  <div className="ml-2 mt-1 mb-2">
+                    {loadingFiles === c.sha ? (
+                      <p className="text-[10px] text-[var(--color-text-muted)] py-1">加载中...</p>
+                    ) : changedFiles[c.sha] && changedFiles[c.sha].length > 0 ? (
+                      <div className="bg-[var(--color-surface)] rounded p-2 border border-[var(--color-border-light)]">
+                        <div className="space-y-0.5">
+                          {changedFiles[c.sha].map((f, i) => (
+                            <div key={i} className="flex items-center gap-1.5 text-[11px]">
+                              <span className={`w-3 text-center font-mono font-bold ${
+                                f.change_type === 'A' ? 'text-green-600' :
+                                f.change_type === 'D' ? 'text-red-600' :
+                                f.change_type === 'R' ? 'text-blue-600' :
+                                'text-orange-500'
+                              }`}>
+                                {f.change_type === 'A' ? '+' : f.change_type === 'D' ? '−' : f.change_type === 'R' ? '→' : '•'}
+                              </span>
+                              <span className="text-[var(--color-text-secondary)] font-mono truncate">{f.path}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-[var(--color-text-muted)] py-1">无变更文件信息</p>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
